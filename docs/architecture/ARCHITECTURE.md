@@ -51,10 +51,15 @@ Stage: 0 — Architecture
 
 - Prisma ORM
 
-## Cache / Queue
+File Storage
 
-- Redis
-- BullMQ
+S3-compatible Object Storage
+
+Development:
+SeaweedFS
+
+Production:
+S3-compatible provider selected during deployment
 
 ## Realtime
 
@@ -63,8 +68,8 @@ Stage: 0 — Architecture
 
 ## File Storage
 
-- MinIO
-- S3-compatible API
+S3-compatible Object Storage
+Development implementation: SeaweedFS
 
 ## Client Applications
 
