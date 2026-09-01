@@ -1,0 +1,86 @@
+# =========================
+# Environment / Secrets
+# =========================
+
+.env
+.env.*
+!.env.example
+
+# =========================
+# Node / NestJS
+# =========================
+
+node_modules/
+dist/
+coverage/
+.nyc_output/
+
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# =========================
+# Flutter / Dart
+# =========================
+
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+.pub-cache/
+.pub/
+build/
+
+client/.dart_tool/
+client/build/
+
+# =========================
+# IDE
+# =========================
+
+.idea/
+
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+
+*.iml
+
+# =========================
+# Operating Systems
+# =========================
+
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# =========================
+# Logs
+# =========================
+
+*.log
+logs/
+
+# =========================
+# Temporary
+# =========================
+
+tmp/
+temp/
+.cache/
+
+# =========================
+# Keys / Certificates
+# =========================
+
+*.pem
+*.key
+*.p12
+*.pfx
+
+# =========================
+# Docker local overrides
+# =========================
+
+docker-compose.override.yml
