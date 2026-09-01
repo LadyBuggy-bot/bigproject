@@ -1,0 +1,85 @@
+name: bigproject-dev
+
+services:
+
+  postgres:
+    image: pgvector/pgvector:0.8.6-pg17
+    container_name: bigproject-postgres
+
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+
+    ports:
+      - "${POSTGRES_PORT}:5432"
+
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./infra/postgres/init:/docker-entrypoint-initdb.d:ro
+
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+    restart: unless-stopped
+
+
+  valkey:
+    image: valkey/valkey:9.1.1-alpine
+    container_name: bigproject-valkey
+
+    command:
+      - valkey-server
+      - --appendonly
+      - "yes"
+      - --requirepass
+      - ${VALKEY_PASSWORD}
+
+    ports:
+      - "${VALKEY_PORT}:6379"
+
+    volumes:
+      - valkey_data:/data
+
+    restart: unless-stopped
+
+
+  seaweedfs:
+    image: chrislusf/seaweedfs:4.44
+    container_name: bigproject-seaweedfs
+
+    command:
+      - mini
+      - -dir=/data
+
+    environment:
+      AWS_ACCESS_KEY_ID: ${S3_ACCESS_KEY}
+      AWS_SECRET_ACCESS_KEY: ${S3_SECRET_KEY}
+      S3_BUCKET: ${S3_BUCKET}
+
+    ports:
+      - "${S3_PORT}:8333"
+      - "${SEAWEED_MASTER_PORT}:9333"
+      - "${SEAWEED_FILER_PORT}:8888"
+      - "${SEAWEED_ADMIN_PORT}:23646"
+
+    volumes:
+      - seaweed_data:/data
+
+    restart: unless-stopped
+
+
+volumes:
+
+  postgres_data:
+
+  valkey_data:
+
+  seaweed_data:

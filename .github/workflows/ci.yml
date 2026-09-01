@@ -1,0 +1,173 @@
+name: CI
+
+on:
+  pull_request:
+    branches:
+      - develop
+      - main
+
+  push:
+    branches:
+      - develop
+      - main
+      - "feature/**"
+
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Validate repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # ---------------------------------------------------------
+      # Repository structure
+      # ---------------------------------------------------------
+
+      - name: Check required project files
+        shell: bash
+        run: |
+          test -f .gitignore
+          test -f .env.example
+          test -f docker-compose.yml
+          test -f docs/architecture/ARCHITECTURE.md
+          test -f infra/postgres/init/001-enable-pgvector.sql
+
+      # ---------------------------------------------------------
+      # Secrets / sensitive files
+      # ---------------------------------------------------------
+
+      - name: Check that local .env is not tracked
+        shell: bash
+        run: |
+          TRACKED_ENV=$(git ls-files | grep -E '(^|/)\.env$' || true)
+
+          if [ -n "$TRACKED_ENV" ]; then
+            echo "ERROR: .env file is tracked by Git:"
+            echo "$TRACKED_ENV"
+            exit 1
+          fi
+
+          echo "OK: local .env is not tracked"
+
+      - name: Check that private keys are not tracked
+        shell: bash
+        run: |
+          TRACKED_KEYS=$(git ls-files | grep -E '\.(pem|key|p12|pfx)$' || true)
+
+          if [ -n "$TRACKED_KEYS" ]; then
+            echo "ERROR: private key or certificate file is tracked:"
+            echo "$TRACKED_KEYS"
+            exit 1
+          fi
+
+          echo "OK: no private keys are tracked"
+
+      # ---------------------------------------------------------
+      # Docker Compose
+      # ---------------------------------------------------------
+
+      - name: Validate Docker Compose configuration
+        shell: bash
+        run: |
+          cp .env.example .env
+          docker compose config > /dev/null
+          echo "Docker Compose configuration is valid"
+
+      # ---------------------------------------------------------
+      # Backend detection
+      # ---------------------------------------------------------
+
+      - name: Detect backend project
+        id: backend
+        shell: bash
+        run: |
+          if [ -f backend/package.json ] && [ ! -f backend/package-lock.json ]; then
+            echo "ERROR: backend/package.json exists but package-lock.json is missing"
+            echo "Commit package-lock.json for reproducible builds."
+            exit 1
+          fi
+
+          if [ -f backend/package.json ] && [ -f backend/package-lock.json ]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+            echo "NestJS/Node backend detected"
+          else
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "Backend is not initialized yet - backend checks skipped"
+          fi
+
+      # ---------------------------------------------------------
+      # Node.js
+      # ---------------------------------------------------------
+
+      - name: Setup Node.js
+        if: steps.backend.outputs.ready == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install backend dependencies
+        if: steps.backend.outputs.ready == 'true'
+        working-directory: backend
+        run: npm ci
+
+      # ---------------------------------------------------------
+      # Backend quality checks
+      # ---------------------------------------------------------
+
+      - name: Backend lint
+        if: steps.backend.outputs.ready == 'true'
+        working-directory: backend
+        run: npm run lint --if-present
+
+      - name: Backend type check
+        if: steps.backend.outputs.ready == 'true'
+        working-directory: backend
+        run: npm run typecheck --if-present
+
+      - name: Backend tests
+        if: steps.backend.outputs.ready == 'true'
+        working-directory: backend
+        run: npm run test --if-present
+
+      - name: Backend build
+        if: steps.backend.outputs.ready == 'true'
+        working-directory: backend
+        run: npm run build --if-present
+
+      # ---------------------------------------------------------
+      # Main branch protection
+      # ---------------------------------------------------------
+
+      - name: Validate source branch for main
+        if: github.event_name == 'pull_request' && github.base_ref == 'main'
+        shell: bash
+        run: |
+          SOURCE_BRANCH="${{ github.head_ref }}"
+
+          case "$SOURCE_BRANCH" in
+            develop|hotfix/*)
+              echo "Valid source branch for main: $SOURCE_BRANCH"
+              ;;
+            *)
+              echo "ERROR: Pull Requests into main are allowed only from:"
+              echo "  develop"
+              echo "  hotfix/*"
+              echo ""
+              echo "Current source branch: $SOURCE_BRANCH"
+              exit 1
+              ;;
+          esac
