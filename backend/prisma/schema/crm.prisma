@@ -12,6 +12,17 @@
 // =============================================================================
 
 
+// -----------------------------------------------------------------------------
+// ВРЕМЕННО: связи с User не объявлены.
+//
+// Модель User принадлежит ядру (stage-1-core) и в схеме ещё не появилась.
+// Поля responsibleUserId, userId и changedById оставлены скалярными —
+// так схема валидна и prisma generate проходит в CI.
+//
+// Когда ядро положит User, к каждому из них дописывается relation
+// и внешний ключ по DATA_MODEL.md п. 60. Места помечены: RELATION-TODO
+// -----------------------------------------------------------------------------
+
 // ------------------------------------------------------------------ 29. Client
 model Client {
   id                String    @id @default(uuid(7)) @db.Uuid
@@ -34,8 +45,7 @@ model Client {
 
   // DATA_MODEL п. 64: CRM использует Client.responsibleUserId,
   // связанный с User. На этом поле держится К-11 — область видимости.
-  responsibleUserId String    @db.Uuid
-  responsibleUser   User      @relation("ClientResponsible", fields: [responsibleUserId], references: [id])
+  responsibleUserId String    @db.Uuid // RELATION-TODO: User
 
   // ПРЕДЛОЖЕНИЕ 1 — К-13 «нет контакта N дней» и ИИ-К-6.
   // Денормализация: пересчитывается при записи в Activity.
@@ -196,8 +206,7 @@ model Deal {
   probability           Int?
   expectedCloseDate     DateTime?
 
-  responsibleUserId     String        @db.Uuid
-  responsibleUser       User          @relation("DealResponsible", fields: [responsibleUserId], references: [id])
+  responsibleUserId     String        @db.Uuid // RELATION-TODO: User
 
   // 35. Deal Business Rule + ТЗ К-7:
   // у активной сделки должен быть следующий шаг.
@@ -256,8 +265,7 @@ model DealStageHistory {
   toStageId   String         @db.Uuid
   toStage     PipelineStage  @relation("StageTo", fields: [toStageId], references: [id])
 
-  changedById String         @db.Uuid
-  changedBy   User           @relation(fields: [changedById], references: [id])
+  changedById String         @db.Uuid // RELATION-TODO: User
 
   createdAt   DateTime       @default(now())
 
@@ -358,8 +366,7 @@ model Activity {
   dealId     String?            @db.Uuid
   deal       Deal?              @relation(fields: [dealId], references: [id])
 
-  userId     String?            @db.Uuid
-  user       User?              @relation(fields: [userId], references: [id])
+  userId     String?            @db.Uuid // RELATION-TODO: User
 
   // ПРЕДЛОЖЕНИЕ 8 — контактное лицо, с которым было взаимодействие.
   contactId  String?            @db.Uuid
