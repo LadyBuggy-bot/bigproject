@@ -1,0 +1,480 @@
+// =============================================================================
+// CRM Domain
+//
+// Основание: docs/database/DATA_MODEL.md, разделы 29-40.
+// Требования: ТЗ раздел 6 (К-1 ... К-13).
+//
+// Именование, состав полей и типы приведены к DATA_MODEL.md.
+// Всё, что выходит за рамки этого документа, помечено меткой
+// ПРЕДЛОЖЕНИЕ и вынесено на обсуждение в docs/database/CRM_MODEL_PROPOSALS.md
+// (DEVELOPMENT.md п. 32: архитектурные изменения не делаются незаметно
+// внутри feature-задачи).
+// =============================================================================
+
+
+// ------------------------------------------------------------------ 29. Client
+model Client {
+  id                String    @id @default(uuid(7)) @db.Uuid
+
+  type              ClientType
+  name              String
+  inn               String?   @db.VarChar(12)
+  kpp               String?   @db.VarChar(9)
+  ogrn              String?   @db.VarChar(15)
+
+  legalAddress      String?
+  actualAddress     String?
+
+  email             String?
+  phone             String?
+
+  source            String?
+  segment           String?
+  comment           String?
+
+  // DATA_MODEL п. 64: CRM использует Client.responsibleUserId,
+  // связанный с User. На этом поле держится К-11 — область видимости.
+  responsibleUserId String    @db.Uuid
+  responsibleUser   User      @relation("ClientResponsible", fields: [responsibleUserId], references: [id])
+
+  // ПРЕДЛОЖЕНИЕ 1 — К-13 «нет контакта N дней» и ИИ-К-6.
+  // Денормализация: пересчитывается при записи в Activity.
+  lastContactAt     DateTime?
+
+  // ПРЕДЛОЖЕНИЕ 2 — К-5, объединение дублей.
+  // Проигравший помечается deletedAt и хранит ссылку на победителя,
+  // иначе теряется история, к которой привязана цель Ц-5.
+  mergedIntoId      String?   @db.Uuid
+  mergedInto        Client?   @relation("ClientMerge", fields: [mergedIntoId], references: [id])
+  mergedFrom        Client[]  @relation("ClientMerge")
+
+  // ПРЕДЛОЖЕНИЕ 3 — К-10, пользовательские поля без участия разработчика.
+  customFields      Json      @default("{}")
+
+  contacts          Contact[]
+  deals             Deal[]
+  activities        Activity[]
+  contracts         Contract[]
+  invoices          Invoice[]
+  tags              ClientTag[]
+  dedupKeys         ClientDedupKey[]
+
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  deletedAt         DateTime?
+
+  @@index([responsibleUserId])
+  @@index([inn])
+  @@index([lastContactAt])
+  @@index([deletedAt])
+}
+
+enum ClientType {
+  LEGAL_ENTITY
+  INDIVIDUAL
+}
+
+
+// ----------------------------------------------------------------- 30. Contact
+model Contact {
+  id         String     @id @default(uuid(7)) @db.Uuid
+
+  clientId   String     @db.Uuid
+  client     Client     @relation(fields: [clientId], references: [id])
+
+  firstName  String
+  lastName   String?
+  position   String?
+  phone      String?
+  email      String?
+  isPrimary  Boolean    @default(false)
+
+  activities Activity[]
+
+  createdAt  DateTime   @default(now())
+  updatedAt  DateTime   @updatedAt
+  deletedAt  DateTime?
+
+  @@index([clientId])
+}
+
+
+// -------------------------------------------------------------- 31. Client Tags
+model Tag {
+  id      String      @id @default(uuid(7)) @db.Uuid
+  name    String
+  type    String
+
+  clients ClientTag[]
+
+  @@unique([type, name])
+}
+
+model ClientTag {
+  clientId String @db.Uuid
+  client   Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  tagId    String @db.Uuid
+  tag      Tag    @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([clientId, tagId])
+  @@index([tagId])
+}
+
+
+// ---------------------------------------------------------------- 32. Pipeline
+model Pipeline {
+  id        String          @id @default(uuid(7)) @db.Uuid
+  name      String
+  isDefault Boolean         @default(false)
+
+  stages    PipelineStage[]
+  deals     Deal[]
+
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
+}
+
+
+// ----------------------------------------------------------- 33. PipelineStage
+model PipelineStage {
+  id          String   @id @default(uuid(7)) @db.Uuid
+
+  pipelineId  String   @db.Uuid
+  pipeline    Pipeline @relation(fields: [pipelineId], references: [id])
+
+  name        String
+  position    Int
+  color       String?
+  isFinal     Boolean  @default(false)
+
+  // ПРЕДЛОЖЕНИЕ 4 — DATA_MODEL различает только isFinal, но выигрыш
+  // и проигрыш ведут себя по-разному: у проигранной сделки обязательна
+  // причина отказа (К-3), а конверсия воронки из Приложения Б считается
+  // по доле выигранных. Одного флага для этого не хватает.
+  outcome     StageOutcome @default(NONE)
+
+  // ПРЕДЛОЖЕНИЕ 5 — К-6, автосоздание задачи при переходе на этап.
+  onEnterTaskTemplateId String? @db.Uuid
+
+  probability Int?
+
+  deals       Deal[]
+  historyFrom DealStageHistory[] @relation("StageFrom")
+  historyTo   DealStageHistory[] @relation("StageTo")
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([pipelineId, position])
+  @@index([pipelineId])
+}
+
+enum StageOutcome {
+  NONE
+  WON
+  LOST
+}
+
+
+// -------------------------------------------------------------------- 34. Deal
+model Deal {
+  id                    String        @id @default(uuid(7)) @db.Uuid
+
+  clientId              String        @db.Uuid
+  client                Client        @relation(fields: [clientId], references: [id])
+
+  pipelineId            String        @db.Uuid
+  pipeline              Pipeline      @relation(fields: [pipelineId], references: [id])
+
+  stageId               String        @db.Uuid
+  stage                 PipelineStage @relation(fields: [stageId], references: [id])
+
+  name                  String
+  amount                Decimal?      @db.Decimal(14, 2)
+  currency              String        @default("RUB") @db.VarChar(3)
+  probability           Int?
+  expectedCloseDate     DateTime?
+
+  responsibleUserId     String        @db.Uuid
+  responsibleUser       User          @relation("DealResponsible", fields: [responsibleUserId], references: [id])
+
+  // 35. Deal Business Rule + ТЗ К-7:
+  // у активной сделки должен быть следующий шаг.
+  nextActionAt          DateTime?
+  nextActionDescription String?
+
+  status                DealStatus    @default(OPEN)
+
+  lossReasonId          String?       @db.Uuid
+  lossReason            LossReason?   @relation(fields: [lossReasonId], references: [id])
+
+  // ПРЕДЛОЖЕНИЕ 6 — ИИ-К-6, «остывающие сделки».
+  lastActivityAt        DateTime?
+
+  // ПРЕДЛОЖЕНИЕ 3 — К-10
+  customFields          Json          @default("{}")
+
+  stageHistory          DealStageHistory[]
+  activities            Activity[]
+  contracts             Contract[]
+  invoices              Invoice[]
+
+  createdAt             DateTime      @default(now())
+  updatedAt             DateTime      @updatedAt
+  closedAt              DateTime?
+  deletedAt             DateTime?
+
+  @@index([clientId])
+  @@index([responsibleUserId])
+  @@index([pipelineId, stageId])
+  @@index([status, expectedCloseDate])
+  @@index([nextActionAt])
+  @@index([lastActivityAt])
+}
+
+enum DealStatus {
+  OPEN
+  WON
+  LOST
+}
+
+
+// ------------------------------------------------------- 36. DealStageHistory
+// DATA_MODEL п. 70.8: изменение этапа сделки журналируется.
+// Без этой таблицы не собрать конверсию по этапам и средний цикл сделки
+// из Приложения Б — задним числом такие данные не восстановить.
+model DealStageHistory {
+  id          String         @id @default(uuid(7)) @db.Uuid
+
+  dealId      String         @db.Uuid
+  deal        Deal           @relation(fields: [dealId], references: [id], onDelete: Cascade)
+
+  fromStageId String?        @db.Uuid
+  fromStage   PipelineStage? @relation("StageFrom", fields: [fromStageId], references: [id])
+
+  toStageId   String         @db.Uuid
+  toStage     PipelineStage  @relation("StageTo", fields: [toStageId], references: [id])
+
+  changedById String         @db.Uuid
+  changedBy   User           @relation(fields: [changedById], references: [id])
+
+  createdAt   DateTime       @default(now())
+
+  @@index([dealId, createdAt])
+  @@index([toStageId, createdAt])
+}
+
+
+// -------------------------------------------------------------- 37. LossReason
+model LossReason {
+  id       String  @id @default(uuid(7)) @db.Uuid
+  name     String  @unique
+  isActive Boolean @default(true)
+
+  deals    Deal[]
+}
+
+
+// ---------------------------------------------------------------- 38. Contract
+model Contract {
+  id        String         @id @default(uuid(7)) @db.Uuid
+
+  clientId  String         @db.Uuid
+  client    Client         @relation(fields: [clientId], references: [id])
+
+  dealId    String?        @db.Uuid
+  deal      Deal?          @relation(fields: [dealId], references: [id])
+
+  number    String
+  date      DateTime?
+  amount    Decimal?       @db.Decimal(14, 2)
+  status    ContractStatus @default(DRAFT)
+
+  // ПРЕДЛОЖЕНИЕ 7 — К-13, «истекает договор».
+  expiresAt DateTime?
+
+  fileId    String?        @db.Uuid
+
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+  deletedAt DateTime?
+
+  @@index([clientId])
+  @@index([expiresAt])
+}
+
+enum ContractStatus {
+  DRAFT
+  ACTIVE
+  EXPIRED
+  TERMINATED
+}
+
+
+// ----------------------------------------------------------------- 39. Invoice
+model Invoice {
+  id            String        @id @default(uuid(7)) @db.Uuid
+
+  clientId      String        @db.Uuid
+  client        Client        @relation(fields: [clientId], references: [id])
+
+  dealId        String?       @db.Uuid
+  deal          Deal?         @relation(fields: [dealId], references: [id])
+
+  number        String
+  date          DateTime
+  dueDate       DateTime
+  amount        Decimal       @db.Decimal(14, 2)
+  paidAmount    Decimal       @default(0) @db.Decimal(14, 2)
+  paymentStatus PaymentStatus @default(ISSUED)
+
+  fileId        String?       @db.Uuid
+
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  @@index([clientId])
+  @@index([paymentStatus, dueDate])
+}
+
+enum PaymentStatus {
+  ISSUED
+  PARTIALLY_PAID
+  PAID
+  OVERDUE
+  CANCELLED
+}
+
+
+// -------------------------------------------------------- 40. Activity Timeline
+// К-2, цель Ц-5: 95% сделок с заполненной историей взаимодействия.
+model Activity {
+  id         String             @id @default(uuid(7)) @db.Uuid
+
+  clientId   String             @db.Uuid
+  client     Client             @relation(fields: [clientId], references: [id])
+
+  dealId     String?            @db.Uuid
+  deal       Deal?              @relation(fields: [dealId], references: [id])
+
+  userId     String?            @db.Uuid
+  user       User?              @relation(fields: [userId], references: [id])
+
+  // ПРЕДЛОЖЕНИЕ 8 — контактное лицо, с которым было взаимодействие.
+  contactId  String?            @db.Uuid
+  contact    Contact?           @relation(fields: [contactId], references: [id])
+
+  type       ActivityType
+
+  // Полиморфная ссылка на первоисточник по DATA_MODEL п. 40
+  entityType String?
+  entityId   String?            @db.Uuid
+
+  summary    String
+
+  // ПРЕДЛОЖЕНИЕ 9 — когда событие произошло на самом деле.
+  // createdAt — когда мы о нём узнали. Для писем и звонков это разные
+  // моменты, а лента и «дата последнего контакта» идут по факту события.
+  occurredAt DateTime
+
+  // ПРЕДЛОЖЕНИЕ 10 — идемпотентность импорта из почты и телефонии:
+  // повторная синхронизация не должна плодить дубли в ленте.
+  externalSrc String?
+  externalId  String?
+
+  direction  ActivityDirection?
+  durationSec Int?
+  body        String?
+
+  createdAt  DateTime           @default(now())
+
+  @@unique([externalSrc, externalId])
+  @@index([clientId, occurredAt(sort: Desc)])
+  @@index([dealId, occurredAt(sort: Desc)])
+  @@index([type, occurredAt])
+}
+
+enum ActivityType {
+  CALL
+  EMAIL
+  MESSAGE
+  MEETING
+  TASK
+  DOCUMENT
+  DEAL_CHANGE
+  NOTE
+}
+
+enum ActivityDirection {
+  INBOUND
+  OUTBOUND
+}
+
+
+// =============================================================================
+// ПРЕДЛОЖЕНИЕ 11 — служебные таблицы CRM
+// DATA_MODEL п. 59 говорит о «отдельном duplicate detection service»,
+// но не описывает его хранилище. Это оно.
+// =============================================================================
+
+// К-5: ключи считаются при записи и ищутся одним индексным запросом.
+// Нормализация на лету означала бы перебор всей базы при каждой проверке.
+model ClientDedupKey {
+  id       String       @id @default(uuid(7)) @db.Uuid
+
+  clientId String       @db.Uuid
+  client   Client       @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  type     DedupKeyType
+  value    String
+
+  @@unique([type, value, clientId])
+  @@index([type, value])
+}
+
+enum DedupKeyType {
+  INN
+  PHONE
+  EMAIL
+  NAME
+}
+
+// К-10: описание пользовательских полей.
+// Значения лежат в Client.customFields / Deal.customFields.
+model CustomFieldDefinition {
+  id        String            @id @default(uuid(7)) @db.Uuid
+
+  entity    CustomFieldEntity
+  key       String
+  label     String
+  type      CustomFieldType
+  options   Json?
+  required  Boolean           @default(false)
+  position  Int               @default(0)
+  isActive  Boolean           @default(true)
+
+  // Код для полевых прав (PERMISSIONS.md: field-level restrictions)
+  fieldCode String            @unique
+
+  createdAt DateTime          @default(now())
+  updatedAt DateTime          @updatedAt
+
+  @@unique([entity, key])
+}
+
+enum CustomFieldEntity {
+  CLIENT
+  DEAL
+}
+
+enum CustomFieldType {
+  TEXT
+  NUMBER
+  DATE
+  BOOLEAN
+  SELECT
+  MULTISELECT
+  USER
+  MONEY
+}
