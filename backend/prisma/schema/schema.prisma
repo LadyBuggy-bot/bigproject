@@ -6,13 +6,20 @@
 //
 // Папка указана в package.json → prisma.schema.
 // DATA_MODEL.md п. 70.10: схема меняется только через миграции.
+//
+// pgvector Prisma не объявляет: расширение создаётся при инициализации тома
+// скриптом infra/postgres/init/001-enable-pgvector.sql (DEVELOPMENT.md п. 9).
+// Объявлять его здесь через `extensions` можно только с preview-функцией
+// postgresqlExtensions — лишняя зависимость от нестабильного API.
+//
+// TODO Prisma 7: конфигурация переедет из package.json в prisma.config.ts,
+// сейчас об этом предупреждает CLI. Мигрировать при обновлении мажора.
 
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider   = "postgresql"
-  url        = env("DATABASE_URL")
-  extensions = [vector]
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
 }
