@@ -1,0 +1,58 @@
+enum NotificationChannel {
+  IN_APP
+  PUSH
+  TELEGRAM
+  EMAIL
+}
+
+enum DeliveryStatus {
+  PENDING
+  PROCESSING
+  SENT
+  FAILED
+  SKIPPED
+}
+
+model Notification {
+  id String @id @default(uuid(7)) @db.Uuid
+  userId String @db.Uuid
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+  type String
+  title String
+  message String
+  entityType ObjectType?
+  entityId String? @db.Uuid
+  // Caller supplies a stable event key to make retries idempotent.
+  eventKey String
+  isRead Boolean @default(false)
+  createdAt DateTime @default(now())
+  readAt DateTime?
+  deliveries NotificationDelivery[]
+  @@unique([userId, eventKey])
+  @@index([userId, isRead, createdAt])
+}
+
+model NotificationDelivery {
+  id String @id @default(uuid(7)) @db.Uuid
+  notificationId String @db.Uuid
+  notification Notification @relation(fields: [notificationId], references: [id], onDelete: Cascade)
+  channel NotificationChannel
+  status DeliveryStatus @default(PENDING)
+  attempts Int @default(0)
+  nextAttemptAt DateTime @default(now())
+  leasedAt DateTime?
+  sentAt DateTime?
+  error String?
+  @@unique([notificationId, channel])
+  @@index([status, nextAttemptAt])
+}
+
+model NotificationPreference {
+  userId String @db.Uuid
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  channel NotificationChannel
+  enabled Boolean @default(false)
+  // External destinations are configured by a trusted integration, never arbitrary request URLs.
+  destination String?
+  @@id([userId, channel])
+}

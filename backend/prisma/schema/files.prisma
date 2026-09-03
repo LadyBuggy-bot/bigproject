@@ -1,0 +1,61 @@
+// Core extensions for folders/version history required by README Files.
+model FileFolder {
+  id String @id @default(uuid(7)) @db.Uuid
+  name String
+  ownerId String @db.Uuid
+  owner User @relation(fields: [ownerId], references: [id], onDelete: Restrict)
+  parentId String? @db.Uuid
+  parent FileFolder? @relation("FolderTree", fields: [parentId], references: [id], onDelete: Restrict)
+  children FileFolder[] @relation("FolderTree")
+  files File[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  deletedAt DateTime?
+  @@index([ownerId, parentId, deletedAt])
+}
+
+model File {
+  id String @id @default(uuid(7)) @db.Uuid
+  originalName String
+  storageKey String @unique
+  mimeType String
+  size Int
+  ownerId String @db.Uuid
+  owner User @relation(fields: [ownerId], references: [id], onDelete: Restrict)
+  folderId String? @db.Uuid
+  folder FileFolder? @relation(fields: [folderId], references: [id], onDelete: Restrict)
+  version Int @default(1)
+  versions FileVersion[]
+  links FileLink[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  deletedAt DateTime?
+  @@index([ownerId, folderId, deletedAt])
+}
+
+model FileVersion {
+  id String @id @default(uuid(7)) @db.Uuid
+  fileId String @db.Uuid
+  file File @relation(fields: [fileId], references: [id], onDelete: Restrict)
+  version Int
+  storageKey String @unique
+  originalName String
+  mimeType String
+  size Int
+  uploadedById String @db.Uuid
+  uploadedBy User @relation(fields: [uploadedById], references: [id], onDelete: Restrict)
+  createdAt DateTime @default(now())
+  @@unique([fileId, version])
+  @@index([uploadedById])
+}
+
+model FileLink {
+  id String @id @default(uuid(7)) @db.Uuid
+  fileId String @db.Uuid
+  file File @relation(fields: [fileId], references: [id], onDelete: Restrict)
+  entityType ObjectType
+  entityId String @db.Uuid
+  createdAt DateTime @default(now())
+  @@unique([fileId, entityType, entityId])
+  @@index([entityType, entityId])
+}

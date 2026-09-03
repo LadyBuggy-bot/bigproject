@@ -148,6 +148,16 @@ jobs:
         working-directory: backend
         run: npm run build --if-present
 
+      - name: Backend migration checks (isolated PostgreSQL)
+        if: steps.backend.outputs.ready == 'true'
+        working-directory: backend
+        run: npm run test:migrations
+
+      - name: Core HTTP and storage integration (isolated services)
+        if: steps.backend.outputs.ready == 'true'
+        working-directory: backend
+        run: npm run test:core-integration
+
       # ---------------------------------------------------------
       # Main branch protection
       # ---------------------------------------------------------

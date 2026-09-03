@@ -2,9 +2,18 @@ import { ValidationPipe, VersioningType } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { AppModule } from './app.module';
+import { randomUUID } from 'node:crypto';
+import { Request, Response, NextFunction } from 'express';
 
 async function bootstrap(): Promise<void> {
   const app = await NestFactory.create(AppModule);
+  app.enableShutdownHooks();
+  app.use((request: Request & { requestId?: string }, response: Response, next: NextFunction) => {
+    request.requestId = randomUUID();
+    response.setHeader('X-Request-Id', request.requestId);
+    response.setHeader('Cache-Control', 'no-store');
+    next();
+  });
 
   // DEVELOPMENT.md п. 16: базовый URL /api/v1
   app.setGlobalPrefix('api');

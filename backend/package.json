@@ -21,31 +21,51 @@
     "test:watch": "jest --watch",
     "test:cov": "jest --coverage",
     "test:e2e": "jest --config test/jest-e2e.json",
+    "test:migrations": "node test/migrations.cjs",
+    "test:core-integration": "npm run build && node test/core-integration.cjs && node test/storage-contract.cjs",
+    "test:infrastructure": "npm run build && node test/infrastructure.cjs",
+    "core:seed": "ts-node src/roles/seed.ts",
+    "prisma:migrate": "prisma migrate deploy",
     "prisma:generate": "prisma generate",
     "prisma:validate": "prisma validate",
     "prisma:format": "prisma format",
     "prisma:studio": "prisma studio"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1125.0",
+    "@nestjs/bullmq": "^11.0.5",
     "@nestjs/common": "^11.0.12",
     "@nestjs/config": "^4.0.2",
     "@nestjs/core": "^11.0.12",
+    "@nestjs/jwt": "^11.0.2",
     "@nestjs/platform-express": "^11.0.12",
+    "@nestjs/platform-socket.io": "^11.2.3",
     "@nestjs/swagger": "^11.1.0",
+    "@nestjs/throttler": "^6.5.0",
+    "@nestjs/websockets": "^11.2.3",
     "@prisma/client": "^6.5.0",
+    "bullmq": "^5.81.4",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.14.1",
+    "google-auth-library": "^10.9.1",
+    "nodemailer": "^7.0.13",
+    "otplib": "^13.5.0",
     "reflect-metadata": "^0.2.2",
-    "rxjs": "^7.8.2"
+    "rxjs": "^7.8.2",
+    "socket.io": "^4.8.3"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "0.5.8",
+    "@electric-sql/pglite-socket": "0.2.11",
     "@eslint/js": "^9.23.0",
     "@nestjs/cli": "^11.0.5",
     "@nestjs/schematics": "^11.0.2",
     "@nestjs/testing": "^11.0.12",
     "@types/express": "^5.0.1",
     "@types/jest": "^29.5.14",
+    "@types/multer": "^2.2.0",
     "@types/node": "^24.0.0",
+    "@types/nodemailer": "^8.0.1",
     "@types/supertest": "^6.0.2",
     "eslint": "^9.23.0",
     "eslint-config-prettier": "^10.1.1",
@@ -71,8 +91,12 @@
     "rootDir": "src",
     "testRegex": ".*\\.spec\\.ts$",
     "transform": {
-      "^.+\\.(t|j)s$": "ts-jest"
+      "^.+\\.ts$": "ts-jest",
+      "^.+\\.m?js$": "<rootDir>/../test/esm-transform.cjs"
     },
+    "transformIgnorePatterns": [
+      "node_modules/(?!(@noble|@scure|@otplib|otplib)/)"
+    ],
     "collectCoverageFrom": [
       "**/*.(t|j)s"
     ],
