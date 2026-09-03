@@ -1,0 +1,25 @@
+// Точка входа Prisma. Схема разнесена по файлам в этой папке:
+// каждый модуль владеет своим файлом и не трогает чужие.
+//
+//   schema.prisma  — generator и datasource (общее)
+//   crm.prisma     — CRM-домен, DATA_MODEL.md разделы 29-40
+//
+// Папка указана в package.json → prisma.schema.
+// DATA_MODEL.md п. 70.10: схема меняется только через миграции.
+//
+// pgvector Prisma не объявляет: расширение создаётся при инициализации тома
+// скриптом infra/postgres/init/001-enable-pgvector.sql (DEVELOPMENT.md п. 9).
+// Объявлять его здесь через `extensions` можно только с preview-функцией
+// postgresqlExtensions — лишняя зависимость от нестабильного API.
+//
+// TODO Prisma 7: конфигурация переедет из package.json в prisma.config.ts,
+// сейчас об этом предупреждает CLI. Мигрировать при обновлении мажора.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
