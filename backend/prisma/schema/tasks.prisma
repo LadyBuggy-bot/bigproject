@@ -1,0 +1,64 @@
+// Minimal Stage 2 data contract. Workflow/API remain owned by Tasks.
+enum TaskPriority {
+  LOW
+  NORMAL
+  HIGH
+  CRITICAL
+}
+
+enum TaskParticipantType {
+  CO_ASSIGNEE
+  WATCHER
+}
+
+model Task {
+  id String @id @default(uuid(7)) @db.Uuid
+  title String
+  description String?
+  authorId String @db.Uuid
+  author User @relation("TaskAuthor", fields: [authorId], references: [id], onDelete: Restrict)
+  assigneeId String @db.Uuid
+  assignee User @relation("TaskAssignee", fields: [assigneeId], references: [id], onDelete: Restrict)
+  // Project relation is completed by Stage 3 when its model exists.
+  projectId String? @db.Uuid
+  clientId String? @db.Uuid
+  client Client? @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  dealId String? @db.Uuid
+  deal Deal? @relation(fields: [dealId], references: [id], onDelete: Restrict)
+  priority TaskPriority @default(NORMAL)
+  status String @default("NEW")
+  taskStatus TaskStatus @relation(fields: [status], references: [code], onDelete: Restrict)
+  plannedHours Decimal? @db.Decimal(10, 2)
+  actualHours Decimal? @db.Decimal(10, 2)
+  originalDeadline DateTime
+  deadline DateTime
+  deadlineChangeCount Int @default(0)
+  participants TaskParticipant[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  completedAt DateTime?
+  deletedAt DateTime?
+  @@index([authorId])
+  @@index([assigneeId, status, deadline])
+  @@index([projectId])
+  @@index([clientId])
+  @@index([dealId, status, deadline])
+}
+
+// Configurable statuses as required by DATA_MODEL §18; isTerminal supports next-action queries.
+model TaskStatus {
+  code String @id
+  name String
+  isTerminal Boolean @default(false)
+  tasks Task[]
+}
+
+model TaskParticipant {
+  taskId String @db.Uuid
+  task Task @relation(fields: [taskId], references: [id], onDelete: Restrict)
+  userId String @db.Uuid
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+  type TaskParticipantType
+  @@id([taskId, userId, type])
+  @@index([userId])
+}
