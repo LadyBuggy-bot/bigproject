@@ -1,0 +1,174 @@
+// Stage 1 owns identity, access and audit. See docs/STAGE_1_CORE_AUDIT.md.
+enum UserStatus {
+  ACTIVE
+  BLOCKED
+  DISMISSED
+}
+
+enum PermissionEffect {
+  ALLOW
+  DENY
+}
+
+enum ObjectType {
+  TASK
+  PROJECT
+  CLIENT
+  DEAL
+  CHANNEL
+  FILE
+}
+
+model User {
+  id String @id @default(uuid(7)) @db.Uuid
+  email String @unique
+  phone String?
+  firstName String
+  lastName String
+  passwordHash String
+  totpSecretEncrypted String?
+  totpPendingEncrypted String?
+  totpPendingExpiresAt DateTime?
+  totpLastStep Int?
+  recoveryCodeHashes String[] @default([])
+  securityVersion Int @default(0)
+  authChallenges AuthChallenge[]
+  files File[]
+  fileVersions FileVersion[]
+  fileFolders FileFolder[]
+  notifications Notification[]
+  notificationPreferences NotificationPreference[]
+  status UserStatus @default(ACTIVE)
+  departmentId String? @db.Uuid
+  department Department? @relation("DepartmentMembers", fields: [departmentId], references: [id], onDelete: Restrict)
+  managerId String? @db.Uuid
+  manager User? @relation("UserHierarchy", fields: [managerId], references: [id], onDelete: Restrict)
+  subordinates User[] @relation("UserHierarchy")
+  managedDepartments Department[] @relation("DepartmentManager")
+  roles UserRole[]
+  objectPermissions ObjectPermission[]
+  sessions Session[]
+  auditLogs AuditLog[]
+  clients Client[]
+  deals Deal[]
+  dealStageChanges DealStageHistory[]
+  activities Activity[]
+  authoredTasks Task[] @relation("TaskAuthor")
+  assignedTasks Task[] @relation("TaskAssignee")
+  taskParticipations TaskParticipant[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  deletedAt DateTime?
+  @@index([managerId])
+  @@index([departmentId])
+  @@index([status, deletedAt])
+}
+
+model Department {
+  id String @id @default(uuid(7)) @db.Uuid
+  name String
+  parentId String? @db.Uuid
+  parent Department? @relation("DepartmentHierarchy", fields: [parentId], references: [id], onDelete: Restrict)
+  children Department[] @relation("DepartmentHierarchy")
+  managerId String? @db.Uuid
+  manager User? @relation("DepartmentManager", fields: [managerId], references: [id], onDelete: Restrict)
+  members User[] @relation("DepartmentMembers")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  @@index([parentId])
+  @@index([managerId])
+}
+
+model Role {
+  id String @id @default(uuid(7)) @db.Uuid
+  name String @unique
+  description String?
+  isSystem Boolean @default(false)
+  users UserRole[]
+  permissions RolePermission[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Permission {
+  id String @id @default(uuid(7)) @db.Uuid
+  code String @unique
+  description String?
+  roles RolePermission[]
+}
+
+model UserRole {
+  userId String @db.Uuid
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+  roleId String @db.Uuid
+  role Role @relation(fields: [roleId], references: [id], onDelete: Restrict)
+  @@id([userId, roleId])
+  @@index([roleId])
+}
+
+model RolePermission {
+  roleId String @db.Uuid
+  role Role @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permissionId String @db.Uuid
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Restrict)
+  @@id([roleId, permissionId])
+  @@index([permissionId])
+}
+
+model ObjectPermission {
+  id String @id @default(uuid(7)) @db.Uuid
+  userId String @db.Uuid
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+  objectType ObjectType
+  objectId String @db.Uuid
+  // Full permission code (client.read), not an ambiguous READ action.
+  permission String
+  effect PermissionEffect @default(DENY)
+  createdAt DateTime @default(now())
+  @@unique([userId, objectType, objectId, permission])
+  @@index([objectType, objectId])
+}
+
+model Session {
+  id String @id @default(uuid(7)) @db.Uuid
+  userId String @db.Uuid
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+  refreshTokenHash String
+  deviceName String?
+  userAgent String?
+  ipAddress String?
+  createdAt DateTime @default(now())
+  expiresAt DateTime
+  revokedAt DateTime?
+  @@index([userId, revokedAt])
+  @@index([expiresAt])
+}
+
+model AuditLog {
+  id String @id @default(uuid(7)) @db.Uuid
+  userId String? @db.Uuid
+  user User? @relation(fields: [userId], references: [id], onDelete: Restrict)
+  action String
+  entityType String
+  entityId String? @db.Uuid
+  oldValue Json?
+  newValue Json?
+  requestId String?
+  ipAddress String?
+  createdAt DateTime @default(now())
+  @@index([entityType, entityId, createdAt])
+  @@index([userId, createdAt])
+}
+
+model AuthChallenge {
+  id String @id @default(uuid(7)) @db.Uuid
+  userId String @db.Uuid
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String @unique
+  securityVersion Int
+  attempts Int @default(0)
+  createdAt DateTime @default(now())
+  expiresAt DateTime
+  consumedAt DateTime?
+  @@index([userId, expiresAt])
+}
